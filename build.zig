@@ -21,34 +21,46 @@ pub fn build(b: *std.build.Builder) void {
     const sign_tag = @tagName(windivert_sign);
     const windivert_dir = b.fmt("WinDivert-2.2.0-{s}", .{sign_tag});
 
-    debug.print("- arch: {s}, conf: {s}, sign: {s}\n", .{@tagName(arch), @tagName(conf), @tagName(windivert_sign)});
+    debug.print("- arch: {s}, conf: {s}, sign: {s}\n", .{ @tagName(arch), @tagName(conf), @tagName(windivert_sign) });
     debug.print("- windows_kit_bin_root: {s}\n", .{windows_kit_bin_root});
     _ = std.fs.realpathAlloc(b.allocator, windows_kit_bin_root) catch @panic("windows_kit_bin_root not found");
 
-    const prefix = b.fmt("{s}_{s}_{s}", .{arch_tag, conf_tag, sign_tag});
-    b.exe_dir = b.fmt("{s}/{s}", .{b.install_path, prefix});
+    const prefix = b.fmt("{s}_{s}_{s}", .{ arch_tag, conf_tag, sign_tag });
+    b.exe_dir = b.fmt("{s}/{s}", .{ b.install_path, prefix });
 
     debug.print("- out: {s}\n", .{b.exe_dir});
 
     const tmp_path = b.fmt("tmp/{s}", .{prefix});
     b.makePath(tmp_path) catch @panic("unable to create tmp directory");
 
-    b.installFile(b.fmt("external/{s}/{s}/WinDivert.dll", .{windivert_dir, arch_tag}), b.fmt("{s}/WinDivert.dll", .{prefix}));
+    b.installFile(b.fmt("external/{s}/{s}/WinDivert.dll", .{ windivert_dir, arch_tag }), b.fmt("{s}/WinDivert.dll", .{prefix}));
+    // install WinDivert kernel and user files
     switch (arch) {
-        .x64 => b.installFile(b.fmt("external/{s}/{s}/WinDivert64.sys", .{windivert_dir, arch_tag}), b.fmt("{s}/WinDivert64.sys", .{prefix})),
-        .x86 => b.installFile(b.fmt("external/{s}/{s}/WinDivert32.sys", .{windivert_dir, arch_tag}), b.fmt("{s}/WinDivert32.sys", .{prefix})),
+        .x64 => b.installFile(b.fmt("external/{s}/{s}/WinDivert64.sys", .{ windivert_dir, arch_tag }), b.fmt("{s}/WinDivert64.sys", .{prefix})),
+        .x86 => b.installFile(b.fmt("external/{s}/{s}/WinDivert32.sys", .{ windivert_dir, arch_tag }), b.fmt("{s}/WinDivert32.sys", .{prefix})),
     }
 
     b.installFile("etc/config.txt", b.fmt("{s}/config.txt", .{prefix}));
-    if (conf == .Ship)
-        b.installFile("LICENSE", b.fmt("{s}/License.txt", .{prefix}));
+    if (conf == .Ship) {
+        // only install LICENSE if it exists in the repo root
+        const cwd = std.fs.cwd();
+        const license_file = cwd.openFile("LICENSE", .{}) catch null;
+        if (license_file) |f| {
+            // close immediately; we only use existence check here
+            f.close();
+            debug.print("Install source: {s} => dest: {s}\n", .{ "LICENSE", b.fmt("{s}/License.txt", .{prefix}) });
+            b.installFile("LICENSE", b.fmt("{s}/License.txt", .{prefix}));
+        } else {
+            debug.print("LICENSE not found, skipping install.\n", .{});
+        }
+    }
 
     const res_obj_path = b.fmt("{s}/clumsy_res.obj", .{tmp_path});
 
     const rc_exe = b.findProgram(&.{
         "rc",
     }, &.{
-        b.pathJoin(&.{windows_kit_bin_root, @tagName(arch)}),
+        b.pathJoin(&.{ windows_kit_bin_root, @tagName(arch) }),
     }) catch @panic("unable to find `rc.exe`, check your windows_kit_bin_root");
 
     const archFlag = switch (arch) {
@@ -84,7 +96,7 @@ pub fn build(b: *std.build.Builder) void {
             exe.subsystem = .Windows;
         },
     }
-    const triple  = switch (arch) {
+    const triple = switch (arch) {
         .x64 => "x86_64-windows-gnu",
         .x86 => "i386-windows-gnu",
     };
@@ -121,11 +133,11 @@ pub fn build(b: *std.build.Builder) void {
         .x86 => "external/iup-3.30_Win32_mingw6_lib",
     };
 
-    exe.addIncludeDir(b.pathJoin(&.{iupLib, "include"}));
-    exe.addCSourceFile(b.pathJoin(&.{iupLib, "libiup.a"}), &.{""});
+    exe.addIncludeDir(b.pathJoin(&.{ iupLib, "include" }));
+    exe.addCSourceFile(b.pathJoin(&.{ iupLib, "libiup.a" }), &.{""});
 
     exe.linkLibC();
-    exe.addLibPath(b.fmt("external/{s}/{s}", .{windivert_dir, arch_tag}));
+    exe.addLibPath(b.fmt("external/{s}/{s}", .{ windivert_dir, arch_tag }));
     exe.linkSystemLibrary("WinDivert");
     exe.linkSystemLibrary("comctl32");
     exe.linkSystemLibrary("Winmm");
@@ -136,15 +148,12 @@ pub fn build(b: *std.build.Builder) void {
     exe.linkSystemLibrary("uuid");
     exe.linkSystemLibrary("ole32");
 
-    const exe_install_step = b.addInstallArtifact(exe);  
-    if (conf == .Ship)
-    {
+    const exe_install_step = b.addInstallArtifact(exe);
+    if (conf == .Ship) {
         const remove_pdb_step = RemoveOutFile.create(b, "clumsy.pdb");
         remove_pdb_step.step.dependOn(&exe_install_step.step);
         b.getInstallStep().dependOn(&remove_pdb_step.step);
-    }
-    else
-    {
+    } else {
         b.getInstallStep().dependOn(&exe_install_step.step);
     }
 
@@ -161,7 +170,7 @@ pub const RemoveOutFile = struct {
 
     pub fn create(builder: *Builder, rel_path: []const u8) *@This() {
         const self = builder.allocator.create(@This()) catch unreachable;
-        self.* = . {
+        self.* = .{
             .step = Step.init(.custom, builder.fmt("RemoveOutFile {s}", .{rel_path}), builder.allocator, make),
             .builder = builder,
             .rel_path = rel_path,
