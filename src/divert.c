@@ -16,6 +16,12 @@ static HANDLE divertHandle;
 static volatile short stopLooping;
 static HANDLE loopThread, clockThread, mutex;
 
+// divertState: 0 = stopped, 1 = running, 2 = stopping
+static volatile LONG divertState = 0;
+#define DIVERT_STATE_STOPPED 0
+#define DIVERT_STATE_RUNNING 1
+#define DIVERT_STATE_STOPPING 2
+
 static DWORD divertReadLoop(LPVOID arg);
 static DWORD divertClockLoop(LPVOID arg);
 
@@ -79,10 +85,18 @@ void dumpPacket(char *buf, int len, PWINDIVERT_ADDRESS paddr) {
 
 int divertStart(const char *filter, char buf[]) {
     int ix;
+    // Prevent concurrent starts/stops
+    LONG prev = InterlockedCompareExchange(&divertState, DIVERT_STATE_RUNNING, DIVERT_STATE_STOPPED);
+    if (prev != DIVERT_STATE_STOPPED) {
+        sprintf(buf, "Failed to start filtering: already running or stopping.");
+        return FALSE;
+    }
 
     divertHandle = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, DIVERT_PRIORITY, 0);
     if (divertHandle == INVALID_HANDLE_VALUE) {
         DWORD lastError = GetLastError();
+        // revert state on failure
+        InterlockedExchange(&divertState, DIVERT_STATE_STOPPED);
         if (lastError == ERROR_INVALID_PARAMETER) {
             strcpy(buf, "Failed to start filtering : filter syntax error.");
         } else {
@@ -111,6 +125,9 @@ int divertStart(const char *filter, char buf[]) {
     mutex = CreateMutex(NULL, FALSE, NULL);
     if (mutex == NULL) {
         sprintf(buf, "Failed to create mutex (%lu)", GetLastError());
+        // cleanup state
+        WinDivertClose(divertHandle);
+        InterlockedExchange(&divertState, DIVERT_STATE_STOPPED);
         return FALSE;
     }
 
@@ -122,6 +139,10 @@ int divertStart(const char *filter, char buf[]) {
     clockThread = CreateThread(NULL, 1, (LPTHREAD_START_ROUTINE)divertClockLoop, NULL, 0, NULL);
     if (clockThread == NULL) {
         sprintf(buf, "Failed to create clock loop thread (%lu)", GetLastError());
+        // cleanup resources
+        CloseHandle(mutex);
+        WinDivertClose(divertHandle);
+        InterlockedExchange(&divertState, DIVERT_STATE_STOPPED);
         return FALSE;
     }
 
@@ -304,7 +325,10 @@ static DWORD divertClockLoop(LPVOID arg) {
 
                 // terminate recv loop by closing handler. handle related error in recv loop to quit
                 closed = WinDivertClose(divertHandle);
-                assert(closed);
+                if (!closed) {
+                    LOG("Warning: WinDivertClose returned false (%lu)", GetLastError());
+                    // don't assert here; just log and continue cleanup
+                }
 
                 // release to let read loop exit properly
                 /***************** leave critical region ************************/
@@ -312,6 +336,8 @@ static DWORD divertClockLoop(LPVOID arg) {
                     LOG("Fatal: Failed to release mutex (%lu)", GetLastError());
                     ABORT();
                 }
+                // mark stopped
+                InterlockedExchange(&divertState, DIVERT_STATE_STOPPED);
                 return 0;
                 break;
             }
@@ -390,8 +416,26 @@ void divertStop() {
     threads[1] = clockThread;
 
     LOG("Stopping...");
+    // try to set state to stopping; if not running, nothing to do
+    LONG prev = InterlockedCompareExchange(&divertState, DIVERT_STATE_STOPPING, DIVERT_STATE_RUNNING);
+    if (prev != DIVERT_STATE_RUNNING) {
+        LOG("divertStop: Not in running state (state=%ld), nothing to stop.", prev);
+        return;
+    }
+
+    // signal threads to stop
     InterlockedIncrement16(&stopLooping);
+    // wait threads to exit
     WaitForMultipleObjects(2, threads, TRUE, INFINITE);
+
+    // cleanup mutex handle if any
+    if (mutex) {
+        CloseHandle(mutex);
+        mutex = NULL;
+    }
+
+    // mark fully stopped
+    InterlockedExchange(&divertState, DIVERT_STATE_STOPPED);
 
     LOG("Successfully waited threads and stopped.");
 }
