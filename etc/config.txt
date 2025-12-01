@@ -25,3 +25,58 @@ ipv6 all: ipv6
 
 # you can add your usual filters here for your own use:
 #http requests ONLY(data transmit on other ports): outbound and tcp.DstPort == 80
+
+# ============================================================
+# Hotkey configurations
+# ============================================================
+# Format supports multiple ways to specify keys:
+#
+# 1. Simple text names (case-insensitive):
+#    F1, F2, ..., F12, A-Z, 0-9, ENTER, ESC, SPACE, etc.
+#
+# 2. Windows VK_* constants (see Microsoft documentation):
+#    VK_F5, VK_TAB, VK_RMENU, VK_LCONTROL, VK_LSHIFT, etc.
+#    All VK_* constants from Windows API are supported.
+#
+# 3. Hexadecimal virtual key codes:
+#    0xA5 (Alt Right), 0x70 (F1), 0xA2 (Ctrl Left), etc.
+#
+# 4. Decimal virtual key codes (for backward compatibility):
+#    116 (F5), 117 (F6), 165 (Alt Right), 162 (Ctrl Left), etc.
+#
+# Modifiers (can be combined with +):
+#    ctrl, shift, alt (case-insensitive)
+#
+# Common examples:
+#   start_key: F5              # Simple key name
+#   start_key: VK_F5           # Windows constant
+#   start_key: 0x74            # Hexadecimal (0x74 = F5)
+#   start_key: 116             # Decimal (116 = F5)
+#   start_key: ctrl+F5         # Ctrl+F5
+#   start_key: VK_LCONTROL+VK_F5  # Ctrl+F5 using VK_ constants
+#   start_key: 0xA2+0x74       # Ctrl+F5 using hex codes
+#   start_key: shift+alt+F6    # Shift+Alt+F6
+#   start_key: ctrl+VK_RMENU   # Ctrl+Right Alt
+#
+# Common Windows VK_* constants:
+#   VK_F1 - VK_F24      (Function keys F1-F24)
+#   VK_TAB              (Tab key)
+#   VK_ENTER            (Enter/Return key)
+#   VK_ESCAPE           (Escape key)
+#   VK_SPACE            (Space bar)
+#   VK_LSHIFT           (Left Shift)
+#   VK_RSHIFT           (Right Shift)
+#   VK_LCONTROL         (Left Ctrl)
+#   VK_RCONTROL         (Right Ctrl)
+#   VK_LMENU            (Left Alt)
+#   VK_RMENU            (Right Alt)
+#   VK_LWIN             (Left Windows key)
+#   VK_RWIN             (Right Windows key)
+#   VK_HOME, VK_END, VK_PRIOR, VK_NEXT  (Navigation keys)
+#   VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN   (Arrow keys)
+#   VK_INSERT, VK_DELETE, VK_BACK       (Edit keys)
+#   VK_NUMPAD0 - VK_NUMPAD9             (Numpad numbers)
+#   VK_MULTIPLY, VK_ADD, VK_SUBTRACT, VK_DIVIDE  (Numpad operators)
+
+start_key: F5
+stop_key: F6
